@@ -1,0 +1,7 @@
+streamlit==1.40.1
+openai==1.55.3
+groq==0.13.0
+python-dotenv==1.0.1
+pydantic==2.10.2
+httpx==0.28.0
+asyncio==3.4.3
