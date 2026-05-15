@@ -108,14 +108,21 @@ def run_async(coro):
 # --- Services ---
 
 class LLMService:
-    def __init__(self, groq_key: str = None):
-        self.groq_key = groq_key or os.getenv("GROQ_API_KEY")
+    def __init__(self):
+        self.groq_key = os.getenv("GROQ_API_KEY")
+        if not self.groq_key:
+            # Fallback to secrets if on Streamlit Cloud
+            try:
+                self.groq_key = st.secrets["GROQ_API_KEY"]
+            except:
+                pass
+                
         self.groq_client = AsyncGroq(api_key=self.groq_key) if self.groq_key else None
         self.groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     async def chat_completion(self, messages: List[Dict[str, str]]) -> str:
         if not self.groq_client:
-            raise RuntimeError("Groq API Key is not configured.")
+            raise RuntimeError("GROQ_API_KEY is not set in environment or secrets.")
             
         try:
             response = await self.groq_client.chat.completions.create(
@@ -170,105 +177,147 @@ class LLMService:
 # --- Streamlit UI ---
 
 st.set_page_config(
-    page_title="AI Debate Bot | Powered by Groq",
+    page_title="DEBATE.AI | The Future of Argumentation",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS for modern look
+# Premium UI CSS
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
     
+    :root {
+        --primary: #8B5CF6;
+        --primary-glow: rgba(139, 92, 246, 0.4);
+        --secondary: #EC4899;
+        --bg-dark: #05050A;
+        --card-bg: rgba(17, 17, 27, 0.7);
+        --text-main: #E2E8F0;
+        --text-muted: #94A3B8;
+    }
+
     html, body, [class*="css"] {
-        font-family: 'DM Sans', sans-serif;
+        font-family: 'Outfit', sans-serif;
     }
     
     .stApp {
-        background-color: #0A0A0F;
-        color: #E2E8F0;
+        background-color: var(--bg-dark);
+        background-image: 
+            radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.05) 0%, transparent 40%),
+            radial-gradient(circle at 80% 70%, rgba(236, 72, 153, 0.05) 0%, transparent 40%);
+        color: var(--text-main);
     }
     
+    /* Animation for glass cards */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
     .glass-card {
-        background: rgba(26, 26, 36, 0.8);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(129, 140, 248, 0.2);
-        padding: 1.5rem;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        background: var(--card-bg);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 2rem;
+        border-radius: 24px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+        animation: fadeIn 0.6s ease-out;
     }
     
     .gradient-text {
-        background: linear-gradient(135deg, #818CF8 0%, #C084FC 50%, #F472B6 100%);
+        background: linear-gradient(135deg, #A78BFA 0%, #F472B6 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         font-weight: 700;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.03em;
     }
     
+    /* AI Message Bubble */
     .ai-bubble {
-        background: linear-gradient(145deg, rgba(30, 30, 50, 0.8), rgba(20, 20, 40, 0.8));
-        border-left: 4px solid #818CF8;
-        padding: 1.25rem;
-        border-radius: 4px 16px 16px 4px;
-        margin: 1.5rem 0;
-        font-size: 1.05rem;
-        line-height: 1.6;
-        border: 1px solid rgba(129, 140, 248, 0.1);
+        background: linear-gradient(165deg, rgba(30, 30, 50, 0.6), rgba(15, 15, 25, 0.6));
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        padding: 1.5rem;
+        border-radius: 4px 24px 24px 24px;
+        margin: 2rem 0;
+        font-size: 1.1rem;
+        line-height: 1.7;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
     
+    /* User Message Bubble */
     .user-bubble {
-        background: rgba(129, 140, 248, 0.05);
-        border-right: 4px solid #C084FC;
-        padding: 1.25rem;
-        border-radius: 16px 4px 4px 16px;
-        margin: 1.5rem 0;
+        background: rgba(139, 92, 246, 0.1);
+        border: 1px solid rgba(236, 72, 153, 0.2);
+        padding: 1.5rem;
+        border-radius: 24px 4px 24px 24px;
+        margin: 2rem 0;
         text-align: right;
-        font-size: 1.05rem;
-        line-height: 1.6;
-        border: 1px solid rgba(192, 132, 252, 0.1);
+        font-size: 1.1rem;
+        line-height: 1.7;
     }
     
     .rating-badge {
-        display: inline-block;
-        padding: 0.35rem 1rem;
-        border-radius: 999px;
-        background: linear-gradient(90deg, rgba(129, 140, 248, 0.2), rgba(192, 132, 252, 0.2));
-        color: #A5B4FC;
+        display: inline-flex;
+        align-items: center;
+        padding: 0.5rem 1.25rem;
+        border-radius: 12px;
+        background: rgba(139, 92, 246, 0.15);
+        color: #C4B5FD;
         font-weight: 600;
-        font-size: 0.85rem;
-        border: 1px solid rgba(129, 140, 248, 0.3);
+        border: 1px solid rgba(139, 92, 246, 0.3);
     }
 
+    /* Better looking buttons */
     .stButton>button {
-        background: linear-gradient(90deg, #6366F1, #A855F7);
+        background: linear-gradient(90deg, #7C3AED, #DB2777);
         color: white;
         border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        font-weight: 600;
-        transition: all 0.3s ease;
+        padding: 0.75rem 2rem;
+        border-radius: 14px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        width: 100%;
     }
 
     .stButton>button:hover {
-        opacity: 0.9;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        transform: scale(1.02);
+        box-shadow: 0 0 20px var(--primary-glow);
     }
 
-    .stTextArea>div>div>textarea {
-        background: rgba(15, 15, 25, 0.8);
-        color: #E2E8F0;
-        border: 1px solid rgba(129, 140, 248, 0.2);
-    }
-
-    /* Sidebar styling */
+    /* Sidebar customization */
     section[data-testid="stSidebar"] {
-        background-color: #05050A;
-        border-right: 1px solid rgba(129, 140, 248, 0.1);
+        background-color: #030307;
+        border-right: 1px solid rgba(255, 255, 255, 0.03);
     }
+
+    .sidebar-title {
+        font-size: 1.8rem;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Input focus effect */
+    .stTextArea textarea {
+        background: rgba(10, 10, 20, 0.6) !important;
+        border-radius: 16px !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        padding: 1rem !important;
+    }
+    
+    .stTextArea textarea:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 2px var(--primary-glow) !important;
+    }
+
+    /* Hide standard Streamlit header/footer */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -288,29 +337,36 @@ if "last_analysis" not in st.session_state:
 if "system_prompt" not in st.session_state:
     st.session_state.system_prompt = ""
 
+# Services
+llm = LLMService()
+
 # Sidebar
 with st.sidebar:
-    st.markdown("<h1 class='gradient-text'>⚖️ DEBATE.AI</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #94A3B8; font-size: 0.9rem;'>The ultimate AI sparring partner.</p>", unsafe_allow_html=True)
-    st.markdown("---")
+    st.markdown("<h1 class='gradient-text sidebar-title'>DEBATE.AI</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #64748B; font-size: 0.95rem; margin-top: -10px;'>Advanced Intelligence Dual.</p>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    st.subheader("🔑 API Configuration")
-    groq_key = st.text_input("Groq API Key", value=os.getenv("GROQ_API_KEY", ""), type="password")
-    llm = LLMService(groq_key=groq_key)
+    st.markdown("### ⚙️ DEBATE ENGINE")
+    st.markdown("<div style='background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);'>", unsafe_allow_html=True)
+    st.write(f"**Provider:** `Groq`")
+    st.write(f"**Model:** `Llama-3.3-70b`")
+    st.write(f"**Status:** {'🟢 Ready' if llm.groq_client else '🔴 API Key Missing'}")
+    st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("---")
-    st.subheader("🛠️ Debate Setup")
+    st.markdown("### 🏛️ DEBATE SETUP")
+    
     if not st.session_state.debate_active:
-        topic_input = st.text_area("Debate Topic", placeholder="e.g., Space exploration is a waste of resources...", height=120)
+        topic_input = st.text_area("Debate Topic", placeholder="Enter a controversial topic...", height=150)
         side_input = st.radio("AI's Position", ["FOR", "AGAINST"], horizontal=True)
         
-        if st.button("🚀 INITIATE DEBATE", use_container_width=True):
-            if not groq_key:
-                st.error("Please provide a Groq API key!")
+        if st.button("INITIATE DUAL"):
+            if not llm.groq_client:
+                st.error("GROQ_API_KEY is not configured in the environment.")
             elif len(topic_input) < 5:
-                st.error("Topic is too short! Be more specific.")
+                st.warning("Topic is too short for a rigorous debate.")
             else:
-                with st.spinner("Preparing arguments..."):
+                with st.spinner("Analyzing topic and preparing opening argument..."):
                     st.session_state.topic = topic_input
                     st.session_state.side = DebateSide(side_input)
                     st.session_state.debate_active = True
@@ -329,14 +385,13 @@ with st.sidebar:
                         st.session_state.turn_number += 1
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Failed to start debate: {str(e)}")
+                        st.error(f"Initialization Failed: {str(e)}")
                         st.session_state.debate_active = False
     else:
-        st.markdown(f"**Current Topic:**\n*{st.session_state.topic}*")
-        st.markdown(f"**AI Position:** `{st.session_state.side.value}`")
         st.markdown(f"**Exchanges:** `{st.session_state.turn_number}`")
+        st.markdown(f"**AI Side:** `{st.session_state.side.value}`")
         
-        if st.button("⏹️ TERMINATE DEBATE", use_container_width=True):
+        if st.button("TERMINATE"):
             st.session_state.debate_active = False
             st.session_state.messages = []
             st.session_state.last_analysis = None
@@ -344,103 +399,131 @@ with st.sidebar:
 
 # Main Interface
 if not st.session_state.debate_active:
-    st.markdown("<div style='text-align: center; padding-top: 100px;'>", unsafe_allow_html=True)
-    st.markdown("<h2 class='gradient-text' style='font-size: 4rem; margin-bottom: 0;'>Master the Art.</h2>", unsafe_allow_html=True)
-    st.markdown("<h3 style='color: #E2E8F0; font-size: 1.5rem; font-weight: 400;'>Win the Argument.</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #94A3B8; font-size: 1.1rem; max-width: 600px; margin: 20px auto;'>Challenge state-of-the-art AI in a rigorous intellectual duel. Powered exclusively by Groq for lightning-fast responses.</p>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align: center; padding-top: 80px; max-width: 800px; margin: 0 auto;'>", unsafe_allow_html=True)
+    st.markdown("<h1 class='gradient-text' style='font-size: 5rem; margin-bottom: 0;'>The Arena.</h1>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #E2E8F0; font-size: 2rem; font-weight: 300; margin-top: 0;'>Challenge pure logic.</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #94A3B8; font-size: 1.2rem; line-height: 1.6; margin-top: 30px;'>Engage in a sophisticated intellectual duel with an AI trained in the arts of rhetoric and philosophy. Configure your debate in the sidebar to begin.</p>", unsafe_allow_html=True)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
     
     cols = st.columns(3)
     with cols[0]:
-        st.markdown("<div class='glass-card'><h4>🧠 Groq Logic</h4><p style='font-size: 0.9rem;'>Powered by Llama-3 for peak reasoning and speed.</p></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='glass-card'>
+            <h4 style='color: #A78BFA; margin-top: 0;'>🧠 Neural Logic</h4>
+            <p style='font-size: 0.9rem; color: #94A3B8;'>Powered by ultra-fast Llama-3 inference on Groq hardware.</p>
+        </div>
+        """, unsafe_allow_html=True)
     with cols[1]:
-        st.markdown("<div class='glass-card'><h4>📊 Analysis</h4><p style='font-size: 0.9rem;'>Real-time feedback on your argument strength.</p></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='glass-card'>
+            <h4 style='color: #F472B6; margin-top: 0;'>📊 Analytics</h4>
+            <p style='font-size: 0.9rem; color: #94A3B8;'>Get objective ratings and fallacy detection for every argument you make.</p>
+        </div>
+        """, unsafe_allow_html=True)
     with cols[2]:
-        st.markdown("<div class='glass-card'><h4>🎭 Persona</h4><p style='font-size: 0.9rem;'>Unwavering AI positions to test your mettle.</p></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='glass-card'>
+            <h4 style='color: #60A5FA; margin-top: 0;'>🛡️ Integrity</h4>
+            <p style='font-size: 0.9rem; color: #94A3B8;'>Unwavering, context-aware debating that pushes your boundaries.</p>
+        </div>
+        """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 else:
-    # Topic Header
-    st.markdown(f"<h2 style='margin-bottom: 0;'>{st.session_state.topic}</h2>", unsafe_allow_html=True)
-    st.markdown(f"<p style='color: #94A3B8;'>AI is arguing {st.session_state.side.value}</p>", unsafe_allow_html=True)
+    # Header Area
+    st.markdown(f"<div style='border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem; margin-bottom: 2rem;'>", unsafe_allow_html=True)
+    st.markdown(f"<h1 style='font-size: 2.5rem; margin-bottom: 0;'>{st.session_state.topic}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color: #94A3B8; font-size: 1.1rem;'>AI is arguing <span style='color: #C4B5FD; font-weight: bold;'>{st.session_state.side.value}</span> the topic</p>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
-    # Chat History
+    # Message History
     for idx, msg in enumerate(st.session_state.messages):
         if msg["role"] == "assistant":
             st.markdown(f"""
             <div class='ai-bubble'>
-                <small style='color: #818CF8; font-weight: bold;'>DEBATE BOT ({st.session_state.side.value})</small><br>
+                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
+                    <span style='color: #8B5CF6; font-weight: 700; font-size: 0.9rem; letter-spacing: 0.05em;'>AI DEBATER</span>
+                </div>
                 {msg["content"]}
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown(f"""
             <div class='user-bubble'>
-                <small style='color: #C084FC; font-weight: bold;'>YOU (OPPOSING)</small><br>
+                <div style='margin-bottom: 0.8rem;'>
+                    <span style='color: #EC4899; font-weight: 700; font-size: 0.9rem; letter-spacing: 0.05em;'>YOU (OPPONENT)</span>
+                </div>
                 {msg["content"]}
             </div>
             """, unsafe_allow_html=True)
 
-    # Latest Analysis
+    # Analytics Panel (Floating Style)
     if st.session_state.last_analysis:
-        with st.container():
-            st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-            st.subheader("📊 Argument Analytics")
-            analysis = st.session_state.last_analysis
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                rating = analysis.get('rating', 5)
-                st.markdown(f"<div class='rating-badge'>Strength Rating: {rating}/10</div>", unsafe_allow_html=True)
-                st.progress(rating / 10)
-            with col2:
-                st.markdown(f"**Assessment:** {analysis.get('strength', 'N/A')}")
-                if analysis.get('logical_fallacies'):
-                    fallacies = analysis['logical_fallacies']
-                    if isinstance(fallacies, list):
-                        st.markdown(f"**Fallacies Detected:** <span style='color: #F87171;'>{', '.join([f for f in fallacies if f])}</span>", unsafe_allow_html=True)
-                
-                points = analysis.get('key_points', [])
-                if points:
-                    st.markdown(f"**Key Points Identified:** {', '.join(points)}")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-    # Input Area
-    st.markdown("---")
-    with st.form("argument_form", clear_on_submit=True):
-        user_input = st.text_area("Your Counter-Argument", placeholder="Deliver your counter-strike...", height=120)
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            submit_button = st.form_submit_button("🔥 SEND ARGUMENT", use_container_width=True)
-
-        if submit_button and user_input:
-            st.session_state.messages.append({"role": "user", "content": user_input})
+        st.markdown("<div class='glass-card' style='border-left: 4px solid #DB2777;'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 0;'>📊 JUDGE'S SCORECARD</h3>", unsafe_allow_html=True)
+        
+        analysis = st.session_state.last_analysis
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            rating = analysis.get('rating', 5)
+            st.markdown(f"<div class='rating-badge'>Logic Score: {rating}/10</div>", unsafe_allow_html=True)
+            st.progress(rating / 10)
             
-            async def process_turn():
-                # 1. Analyze user argument
-                analysis_msgs = [
-                    {"role": "system", "content": "You are an expert debate judge and argumentation analyst. Analyze the user's argument objectively and return JSON only."},
-                    {"role": "user", "content": DebatePrompts.get_analysis_prompt(user_input)}
-                ]
-                analysis = await llm.json_completion(analysis_msgs)
-                st.session_state.last_analysis = analysis
+        with col2:
+            st.markdown(f"**Assessment:** {analysis.get('strength', 'N/A')}")
+            
+            fallacies = analysis.get('logical_fallacies')
+            if fallacies and isinstance(fallacies, list) and fallacies[0]:
+                st.markdown(f"**Fallacies:** <span style='color: #F87171;'>{', '.join(fallacies)}</span>", unsafe_allow_html=True)
+            
+            points = analysis.get('key_points', [])
+            if points:
+                st.markdown(f"**Extracted Points:** {', '.join(points)}")
                 
-                # 2. Generate AI counter-argument
-                debate_msgs = [{"role": "system", "content": st.session_state.system_prompt}]
-                for m in st.session_state.messages:
-                    debate_msgs.append(m)
-                
-                counter_prompt = DebatePrompts.get_counter_argument_prompt(user_input, st.session_state.turn_number)
-                debate_msgs.append({"role": "user", "content": counter_prompt})
-                
-                response = await llm.chat_completion(debate_msgs)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.session_state.turn_number += 1
+        st.markdown("</div>", unsafe_allow_html=True)
 
-            with st.spinner("AI is analyzing and preparing a counter-strike..."):
-                try:
-                    run_async(process_turn())
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error processing turn: {str(e)}")
+    # Input Dock
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    with st.container():
+        with st.form("input_form", clear_on_submit=True):
+            user_input = st.text_area("", placeholder="Deliver your counter-argument...", height=120, label_visibility="collapsed")
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col2:
+                submitted = st.form_submit_button("DELIVER ARGUMENT")
+                
+            if submitted and user_input:
+                st.session_state.messages.append({"role": "user", "content": user_input})
+                
+                async def process_turn():
+                    # 1. Analyze
+                    analysis_msgs = [
+                        {"role": "system", "content": "You are a professional debate judge. Analyze and return JSON."},
+                        {"role": "user", "content": DebatePrompts.get_analysis_prompt(user_input)}
+                    ]
+                    st.session_state.last_analysis = await llm.json_completion(analysis_msgs)
+                    
+                    # 2. Respond
+                    debate_msgs = [{"role": "system", "content": st.session_state.system_prompt}]
+                    for m in st.session_state.messages:
+                        debate_msgs.append(m)
+                    
+                    counter_prompt = DebatePrompts.get_counter_argument_prompt(user_input, st.session_state.turn_number)
+                    debate_msgs.append({"role": "user", "content": counter_prompt})
+                    
+                    response = await llm.chat_completion(debate_msgs)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    st.session_state.turn_number += 1
+
+                with st.spinner("AI is formulating a rebuttal..."):
+                    try:
+                        run_async(process_turn())
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Critical Error: {str(e)}")
 
 # Footer
-st.markdown("<br><br>", unsafe_allow_html=True)
-st.markdown("<div style='text-align: center; color: #4B5563; font-size: 0.8rem; padding: 2rem;'>DEBATE.AI v1.1 | Powered by Groq</div>", unsafe_allow_html=True)
+st.markdown("<br><br><br>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #475569; font-size: 0.85rem; padding: 2rem; border-top: 1px solid rgba(255,255,255,0.03);'>", unsafe_allow_html=True)
+st.write("DEBATE.AI v1.2 | High-Fidelity Argumentation Engine | Developed with Streamlit & Groq")
+st.markdown("</div>", unsafe_allow_html=True)
