@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from enum import Enum
 from dataclasses import dataclass, asdict
-from openai import AsyncOpenAI
 from groq import AsyncGroq
 from dotenv import load_dotenv
 
@@ -109,110 +108,69 @@ def run_async(coro):
 # --- Services ---
 
 class LLMService:
-    def __init__(self, provider: str = "openai", openai_key: str = None, groq_key: str = None):
-        self.provider = provider
-        self.openai_key = openai_key or os.getenv("OPENAI_API_KEY")
+    def __init__(self, groq_key: str = None):
         self.groq_key = groq_key or os.getenv("GROQ_API_KEY")
-        
-        self.openai_client = AsyncOpenAI(api_key=self.openai_key) if self.openai_key else None
         self.groq_client = AsyncGroq(api_key=self.groq_key) if self.groq_key else None
-        
-        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-    async def chat_completion(self, messages: List[Dict[str, str]], provider: Optional[str] = None) -> str:
-        target_provider = provider or self.provider
-        
-        providers_to_try = [target_provider]
-        if target_provider == "openai":
-            if self.groq_client: providers_to_try.append("groq")
-        elif target_provider == "groq":
-            if self.openai_client: providers_to_try.append("openai")
+    async def chat_completion(self, messages: List[Dict[str, str]]) -> str:
+        if not self.groq_client:
+            raise RuntimeError("Groq API Key is not configured.")
+            
+        try:
+            response = await self.groq_client.chat.completions.create(
+                model=self.groq_model,
+                messages=messages,
+                temperature=0.8,
+                max_tokens=1000,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            raise RuntimeError(f"Groq API error: {str(e)}")
 
-        last_error = None
-        for p in providers_to_try:
-            try:
-                if p == "openai":
-                    if not self.openai_client: continue
-                    response = await self.openai_client.chat.completions.create(
-                        model=self.openai_model,
-                        messages=messages,
-                        temperature=0.8,
-                        max_tokens=1000,
-                    )
-                    return response.choices[0].message.content.strip()
-                else:
-                    if not self.groq_client: continue
-                    response = await self.groq_client.chat.completions.create(
-                        model=self.groq_model,
-                        messages=messages,
-                        temperature=0.8,
-                        max_tokens=1000,
-                    )
-                    return response.choices[0].message.content.strip()
-            except Exception as e:
-                last_error = e
-                st.warning(f"⚠️ {p.upper()} failed: {str(e)}. Attempting fallback...")
-        
-        raise RuntimeError(f"All LLM providers failed. Last error: {str(last_error)}")
+    async def json_completion(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+        if not self.groq_client:
+            return {
+                "strength": "Groq not configured",
+                "key_points": ["Analysis failed"],
+                "logical_fallacies": None,
+                "rating": 5
+            }
 
-    async def json_completion(self, messages: List[Dict[str, str]], provider: Optional[str] = None) -> Dict[str, Any]:
-        target_provider = provider or self.provider
-        
-        providers_to_try = [target_provider]
-        if target_provider == "openai":
-            if self.groq_client: providers_to_try.append("groq")
-        elif target_provider == "groq":
-            if self.openai_client: providers_to_try.append("openai")
-
-        for p in providers_to_try:
-            try:
-                content = ""
-                if p == "openai":
-                    if not self.openai_client: continue
-                    response = await self.openai_client.chat.completions.create(
-                        model=self.openai_model,
-                        messages=messages,
-                        temperature=0.3,
-                        response_format={"type": "json_object"},
-                    )
-                    content = response.choices[0].message.content.strip()
-                else:
-                    if not self.groq_client: continue
-                    response = await self.groq_client.chat.completions.create(
-                        model=self.groq_model,
-                        messages=messages,
-                        temperature=0.3,
-                    )
-                    content = response.choices[0].message.content.strip()
-                
-                # Cleanup content for JSON parsing (LLMs sometimes wrap in code blocks)
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0].strip()
-                elif "```" in content:
-                    content = content.split("```")[1].split("```")[0].strip()
-                
-                return json.loads(content)
-            except Exception as e:
-                if content:
-                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                    if json_match:
-                        try:
-                            return json.loads(json_match.group())
-                        except: pass
-                continue
-        
-        return {
-            "strength": "Analysis unavailable",
-            "key_points": ["Analysis failed"],
-            "logical_fallacies": None,
-            "rating": 5
-        }
+        content = ""
+        try:
+            response = await self.groq_client.chat.completions.create(
+                model=self.groq_model,
+                messages=messages,
+                temperature=0.3,
+            )
+            content = response.choices[0].message.content.strip()
+            
+            # Cleanup content for JSON parsing
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            return json.loads(content)
+        except Exception as e:
+            if content:
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    try:
+                        return json.loads(json_match.group())
+                    except: pass
+            return {
+                "strength": "Analysis unavailable",
+                "key_points": ["Analysis failed"],
+                "logical_fallacies": None,
+                "rating": 5
+            }
 
 # --- Streamlit UI ---
 
 st.set_page_config(
-    page_title="AI Debate Bot | Premium Argumentation",
+    page_title="AI Debate Bot | Powered by Groq",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -337,11 +295,8 @@ with st.sidebar:
     st.markdown("---")
     
     st.subheader("🔑 API Configuration")
-    openai_key = st.text_input("OpenAI API Key", value=os.getenv("OPENAI_API_KEY", ""), type="password")
     groq_key = st.text_input("Groq API Key", value=os.getenv("GROQ_API_KEY", ""), type="password")
-    
-    provider = st.selectbox("Preferred Model", ["openai", "groq"], index=0)
-    llm = LLMService(provider=provider, openai_key=openai_key, groq_key=groq_key)
+    llm = LLMService(groq_key=groq_key)
     
     st.markdown("---")
     st.subheader("🛠️ Debate Setup")
@@ -350,8 +305,8 @@ with st.sidebar:
         side_input = st.radio("AI's Position", ["FOR", "AGAINST"], horizontal=True)
         
         if st.button("🚀 INITIATE DEBATE", use_container_width=True):
-            if not openai_key and not groq_key:
-                st.error("Please provide at least one API key!")
+            if not groq_key:
+                st.error("Please provide a Groq API key!")
             elif len(topic_input) < 5:
                 st.error("Topic is too short! Be more specific.")
             else:
@@ -392,11 +347,11 @@ if not st.session_state.debate_active:
     st.markdown("<div style='text-align: center; padding-top: 100px;'>", unsafe_allow_html=True)
     st.markdown("<h2 class='gradient-text' style='font-size: 4rem; margin-bottom: 0;'>Master the Art.</h2>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #E2E8F0; font-size: 1.5rem; font-weight: 400;'>Win the Argument.</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #94A3B8; font-size: 1.1rem; max-width: 600px; margin: 20px auto;'>Challenge state-of-the-art AI in a rigorous intellectual duel. Configure your topic and start your debate to begin.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #94A3B8; font-size: 1.1rem; max-width: 600px; margin: 20px auto;'>Challenge state-of-the-art AI in a rigorous intellectual duel. Powered exclusively by Groq for lightning-fast responses.</p>", unsafe_allow_html=True)
     
     cols = st.columns(3)
     with cols[0]:
-        st.markdown("<div class='glass-card'><h4>🧠 AI Logic</h4><p style='font-size: 0.9rem;'>Powered by GPT-4 and Llama-3 for peak reasoning.</p></div>", unsafe_allow_html=True)
+        st.markdown("<div class='glass-card'><h4>🧠 Groq Logic</h4><p style='font-size: 0.9rem;'>Powered by Llama-3 for peak reasoning and speed.</p></div>", unsafe_allow_html=True)
     with cols[1]:
         st.markdown("<div class='glass-card'><h4>📊 Analysis</h4><p style='font-size: 0.9rem;'>Real-time feedback on your argument strength.</p></div>", unsafe_allow_html=True)
     with cols[2]:
@@ -488,4 +443,4 @@ else:
 
 # Footer
 st.markdown("<br><br>", unsafe_allow_html=True)
-st.markdown("<div style='text-align: center; color: #4B5563; font-size: 0.8rem; padding: 2rem;'>DEBATE.AI v1.0 | High-Fidelity Argumentation Engine</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #4B5563; font-size: 0.8rem; padding: 2rem;'>DEBATE.AI v1.1 | Powered by Groq</div>", unsafe_allow_html=True)

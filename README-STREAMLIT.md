@@ -9,11 +9,11 @@ A high-fidelity, single-file AI debate application built with Streamlit. This ve
 | Feature | Description |
 |---|---|
 | 🚀 Single-File Deployment | No more managing separate frontend and backend services. |
-| 🛡️ Dual-Provider Support | Native support for both **OpenAI** and **Groq**. |
-| 🔄 Automatic Fallback | If OpenAI fails or rate-limits, the bot seamlessly falls back to Groq (and vice-versa). |
+| 🛡️ Groq-Native Engine | Optimized exclusively for **Groq** for lightning-fast debates. |
+| ⚡ Sub-Second Responses | Leverages Llama-3 on Groq for near-instant counter-arguments. |
 | 🎨 Premium UI | Custom CSS glassmorphism, gradients, and a sleek dark mode design. |
 | 📊 Real-time Analytics | Deep analysis of user arguments including strength ratings and logical fallacies. |
-| 🔑 In-App Configuration | Manage your API keys directly from the sidebar. |
+| 🔑 In-App Configuration | Manage your Groq API key directly from the sidebar. |
 
 ---
 
@@ -24,8 +24,8 @@ The entire application logic is now consolidated into `streamlit_app.py`, making
 ```
 ai-debate-bot/
 ├── streamlit_app.py          # Unified application (Logic + UI)
-├── requirements-streamlit.txt # Minimal dependencies for Streamlit
-├── .env.example              # Updated with Groq support
+├── requirements.txt          # Minimal dependencies for Streamlit
+├── .env.example              # Updated with Groq focus
 └── README-STREAMLIT.md       # This guide
 ```
 
@@ -36,7 +36,7 @@ ai-debate-bot/
 ### 1. Install Dependencies
 
 ```bash
-pip install -r requirements-streamlit.txt
+pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment
@@ -47,9 +47,8 @@ Create a `.env` file in the root directory (or copy from `.env.example`):
 cp .env.example .env
 ```
 
-Add your API keys:
+Add your Groq API key:
 ```env
-OPENAI_API_KEY=sk-...
 GROQ_API_KEY=gsk-...
 ```
 
